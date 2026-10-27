@@ -1,0 +1,145 @@
+name: customer-support-agent
+version: "1.0.0"
+description: "AI-powered customer support agent with knowledge base search and ticket creation"
+
+runtime:
+  timeout: 3600        # 1 hour max session (up to 8h supported)
+  memory: 2048         # MB
+  python_version: "3.12"
+  environment_variables:
+    LOG_LEVEL: "INFO"
+    AGENT_NAME: "TechCorp Support Agent"
+
+harness:
+  model: anthropic.claude-3-5-sonnet-20241022-v2:0
+  system_prompt: |
+    You are a helpful customer support agent for TechCorp.
+    
+    Your responsibilities:
+    - Answer customer questions using the knowledge base
+    - Create support tickets for complex issues
+    - Analyze customer data when needed
+    - Remember customer preferences across conversations
+    
+    Guidelines:
+    - Always be polite and professional
+    - If you don't know something, say so and offer to create a ticket
+    - Use the search_knowledge_base tool to find accurate information
+    - Use create_ticket tool for issues requiring human follow-up
+    - Remember customer preferences for better service
+  temperature: 0.7
+  max_tokens: 2048
+  top_p: 0.9
+
+memory:
+  short_term: true      # Session conversation history
+  long_term: true       # Cross-session user preferences
+  semantic_search: true # Vector-based memory retrieval
+  retention_days: 90
+  vector_dimension: 1536
+
+gateway:
+  tools:
+    # Lambda function for knowledge base search
+    - type: lambda
+      name: search_knowledge_base
+      arn: arn:aws:lambda:us-east-1:${AWS_ACCOUNT_ID}:function:kb-search
+      description: "Search TechCorp knowledge base for technical answers and documentation"
+      timeout: 30
+      retry_config:
+        max_attempts: 3
+        backoff_multiplier: 2
+    
+    # REST API for ticket creation
+    - type: openapi
+      name: create_ticket
+      spec_url: https://api.techcorp.com/openapi.yaml
+      description: "Create a support ticket in the TechCorp ticketing system"
+      authentication:
+        type: api_key
+        header: X-API-Key
+        secret_arn: arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:techcorp-api-key
+    
+    # Example MCP server tool
+    - type: mcp
+      name: customer_database
+      server_url: https://mcp.techcorp.com/customers
+      description: "Query customer database for account information"
+
+code_interpreter:
+  enabled: true
+  timeout: 300  # 5 minutes max per code execution
+  max_memory_mb: 512
+  allowed_packages:
+    - pandas
+    - numpy
+    - matplotlib
+    - requests
+
+browser:
+  enabled: false  # Enable if web browsing is needed
+  timeout: 60
+  max_pages: 10
+
+observability:
+  tracing: enabled
+  log_level: INFO
+  metrics_namespace: "TechCorp/CustomerSupport"
+  custom_metrics:
+    - name: ticket_creation_count
+      unit: Count
+    - name: avg_resolution_time
+      unit: Seconds
+    - name: knowledge_base_hits
+      unit: Count
+  export_traces_to:
+    - cloudwatch
+    - xray
+
+evaluations:
+  enabled: true
+  eval_dataset_s3: s3://techcorp-agent-evals/customer-support/
+  schedule: "rate(1 day)"  # Run daily evaluations
+
+policy:
+  # Optional: Bedrock Guardrails integration
+  # guardrail_id: "abc123def456"
+  blocked_topics:
+    - competitor_pricing
+    - unreleased_features
+    - internal_salaries
+  content_filters:
+    hate: HIGH
+    insults: HIGH
+    sexual: HIGH
+    violence: MEDIUM
+    misconduct: MEDIUM
+
+registry:
+  publish: true
+  visibility: private  # private | team | organization
+  tags:
+    team: customer-success
+    environment: production
+    cost-center: support-ops
+
+deployment:
+  regions:
+    - us-east-1
+    - eu-west-1
+  vpc_config:
+    enabled: false
+    # subnet_ids:
+    #   - subnet-xxxxx
+    # security_group_ids:
+    #   - sg-xxxxx
+  
+  auto_scaling:
+    min_capacity: 2
+    max_capacity: 100
+    target_utilization: 70
+  
+  rollout_strategy:
+    type: blue_green
+    canary_percentage: 10
+    canary_duration_minutes: 60

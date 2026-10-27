@@ -1,0 +1,6 @@
+# Core dependencies - NO AWS required!
+litellm>=1.0.0
+python-dotenv>=1.0.0
+
+# Optional: For AgentCore deployment (only needed when deploying to AWS)
+# boto3>=1.34.0

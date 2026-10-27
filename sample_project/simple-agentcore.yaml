@@ -1,0 +1,31 @@
+# Simple AgentCore Configuration
+# This is the basic config to get you started
+
+name: my-first-agent
+version: "1.0.0"
+
+# How much computing power your agent gets
+runtime:
+  timeout: 300      # 5 minutes max
+  memory: 1024      # 1 GB
+  python_version: "3.12"
+
+# Which AI model to use
+harness:
+  model: anthropic.claude-3-5-sonnet-20241022-v2:0
+  system_prompt: "You are a helpful assistant."
+  temperature: 0.7   # How creative (0 = factual, 1 = creative)
+
+# Remember conversations
+memory:
+  short_term: true   # Remember current conversation
+  long_term: false   # Don't need long-term memory yet
+
+# External tools (none for now)
+gateway:
+  tools: []
+
+# See what's happening
+observability:
+  tracing: enabled
+  log_level: INFO
