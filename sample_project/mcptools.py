@@ -160,76 +160,144 @@
 #     print(response)
 
 # ========================================================
-# MCP With elicitation
+# MCP With elicitation (means using a human in the loop)
 # ========================================================
-from strands import Agent, tool
-from strands.models.litellm import LiteLLMModel
-import os, sys
-from dotenv import load_dotenv
-from strands.tools.mcp import MCPClient
-from mcp import stdio_client, StdioServerParameters
-from mcp.types import ElicitResult
+# from strands import Agent, tool
+# from strands.models.litellm import LiteLLMModel
+# import os, sys
+# from dotenv import load_dotenv
+# from strands.tools.mcp import MCPClient
+# from mcp import stdio_client, StdioServerParameters
+# from mcp.types import ElicitResult
+# from pathlib import Path
+# from pprint import pprint
+# import asyncio
+
+# load_dotenv()
+
+# # elicitation callback function
+
+# async def approval_callback(callback, params):
+#     print(f"\n [APPROVAL REQUSTED] {params.message}")
+#     result = await asyncio.to_thread(input, "Approve? (y/n): ")
+#     # normalise the answer
+#     if result.strip().lower() in ("y", "yes"):
+#         return ElicitResult(action="accept", content={"approval": True})
+#     return ElicitResult(action="decline")
+
+# # mcp client
+# calculator_mcp = MCPClient(
+#     lambda: stdio_client(
+#         StdioServerParameters(
+#             command=sys.executable,
+#             args=[str(Path(__file__).parent / "my_tools.py")],
+#         )
+#     ),
+#     elicitation_callback=approval_callback
+# )
+# model = LiteLLMModel(
+#     client_args={
+#         "api_key": os.getenv("GROQ_API_KEY"),
+#         "api_base": os.getenv("API_URL")
+#         },
+#     model_id=os.getenv("MODEL_NAME", "groq/openai/gpt-oss-120b"),
+#     params = {"temperature" :0.3,
+#         "reasoning_effort": "low",
+#         "max_tokens": 800,
+#         "num_retries": 3,
+#         }
+# )
+# with calculator_mcp:
+#     tools = calculator_mcp.list_tools_sync()
+#     agent = Agent(
+#         model=model,
+#         tools=tools,
+#         system_prompt=(
+#     "You are a helpful mathematics assistant. "
+#     "Use the add tool for sums and the multiply tool for products. "
+#     "Call tools immediately, without asking the user for permission first. "
+#     "The tools themselves ask the user for approval. "
+#     "If a tool result says the user denied the operation, do not retry; "
+#     "just tell the user it was not run."
+# ),
+#         # callback_handler=None,
+#         )
+#     try:
+#         a = int(input("Enter the first number: "))
+#         b = int(input("Enter the second number: "))
+#     except ValueError:
+#         sys.exit("Please enter whole numbers only.")
+#     agent(f"calculate the sum and product of {a} and {b}")
+
+
+
+
+
+
+# ========================================================
+# MCP With elicitation (means using a human in the loop), 
+# modelling a db operation
+# =========================================================
+import asyncio, os, sys
 from pathlib import Path
-from pprint import pprint
-import asyncio
+from dotenv import load_dotenv
+from mcp import StdioServerParameters, stdio_client
+from mcp.types import ElicitResult
+from strands import Agent
+from strands.models.litellm import LiteLLMModel
+from strands.tools.mcp import MCPClient
 
 load_dotenv()
 
-# elicitation callback function
-
-async def approval_callback(callback, params):
-    print(f"\n [APPROVAL REQUSTED] {params.message}")
-    result = await asyncio.to_thread(input, "Approve? (y/n): ")
-    # normalise the answer
-    if result.strip().lower() in ("y", "yes"):
-        return ElicitResult(action="accept", context={"approve": False})
+async def approval_callback(context, params):
+    print(f"\n [APPROVAL REQUESTED] {params.message}")
+    answer = await asyncio.to_thread(input, "Approve? (y/n): ")
+    if answer.strip().lower() in ("y", "yes"):
+        return ElicitResult(action="accept", content={"approval": True})
     return ElicitResult(action="decline")
 
-# mcp client
-calculator_mcp = MCPClient(
+
+db_mcp = MCPClient(
     lambda: stdio_client(
         StdioServerParameters(
             command=sys.executable,
-            args=[str(Path(__file__).parent / "my_tools.py")],
+            args=[str(Path(__file__).parent / "my_tools.py")]
         )
     ),
     elicitation_callback=approval_callback
 )
+
 model = LiteLLMModel(
-    client_args={
-        "api_key": os.getenv("GROQ_API_KEY"),
-        "api_base": os.getenv("API_URL")
-        },
-    model_id=os.getenv("MODEL_NAME", "groq/openai/gpt-oss-120b"),
-    params = {"temperature" :0.3,
-        "reasoning_effort": "low",
-        "max_tokens": 800
-        }
+    model_id=os.getenv("MODEL_NAME", "groq/openai/gpt-oss-120bs"),
+    params={"temperature": 0.3,
+    "max_tokens": 4000}
 )
-with calculator_mcp:
-    tools = calculator_mcp.list_tools_sync()
+
+SYSTEM_PROMPT = (
+    "You manage a small user database through tools. "
+    "Use read_db to look up records; never guess or invent record contents. "
+    "To delete a record, call delete_record immediately, without asking the user "
+    "for permission first; the tool itself asks the user for approval. "
+    "Only say a record was deleted if the tool result says it was deleted. "
+    "If the tool result says the user did not approve, do not retry; "
+    "just tell the user nothing was deleted."
+)
+
+with db_mcp:
     agent = Agent(
         model=model,
-        tools=tools,
-        system_prompt=(
-            "You are a helpful mathematics assistant. "
-            "For ANY arithmetic, call the calculator tool immediately. "
-            "Do NOT ask the user for permission or confirmation yourself: "
-            "approval is handled automatically by the tool. "
-            "If the tool says the user denied the calculation, do not retry; "
-            "just tell the user it was not run."
-        ),
-        # callback_handler=None,
-        )
-    try:
-        a = int(input("Enter the first number: "))
-        b = int(input("Enter the second number: "))
-    except ValueError:
-        sys.exit("Please enter whole numbers only.")
-    response = agent(f"calculate the sum of {a} and {b}")
-    print(response)
+        tools=db_mcp.list_tools_sync(),
+        system_prompt=SYSTEM_PROMPT,
+        callback_handler=None,
+    )
 
+    print(f"Database agent ready, type 'quit' to exit. ")
 
-
-
-
+    while True:
+        prompt = input("\n You: ").strip()
+        if prompt.lower() in ("quit", "exit", "q"):
+            break
+        if not prompt:
+            continue
+        response = agent(prompt)
+        print(response)
