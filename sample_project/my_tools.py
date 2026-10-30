@@ -134,7 +134,10 @@ class Approval(BaseModel):
     approval: bool = Field(description="Allow this calculation to run")
 
 
-# resolver
+# resolver==============================================
+# a function that supplies the value of a tool parameter,
+# instead of the model or client providing it.
+# ===========================================================
 async def ask_to_delete(record_id: int) -> Approval | Elicit[Approval]:
     record = find(record_id)
     if record is None:
@@ -144,7 +147,6 @@ async def ask_to_delete(record_id: int) -> Approval | Elicit[Approval]:
         f"{record['name']} < {record['email']} > ({record['role']})?",
         Approval
     )
-
 
 @mcp.tool(description="Read the database, Pass record_id for one record, or omit it to list all records")
 async def read_db(record_id: int | None = None) -> str:
